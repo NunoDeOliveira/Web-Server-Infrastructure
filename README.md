@@ -9,23 +9,25 @@
 ![Status](https://img.shields.io/badge/Status-Validation_in_progress-yellow)
 
 
-This project involves the design, implementation and administration of a Linux Web Server operating and its network infrastructure. The web server runs on a DMZ architecture bounded by two firewalls, both of which also run on the Alpine Linux operating system and use nftables as their service.
+This project focuses on the design, implementation and validation of a segmented Linux infrastructure for publishing an HTTPS service.
 
-For this project, I assumed the role of Systems and Network Administrator. 
+The objective is to provide a reproducible infrastructure suitable for a small organisation, where the public-facing service is protected from external network and the internal network is isolated.
 
-The objective is to provide the development team with a secure deployment target while retaining administrative control and isolating the public-facing service from protected networks.
+The infrastructure uses separate External, DMZ, Internal and Management networks. The Web Server runs in the DMZ, protected by two Alpine Linux firewalls using nftables for routing, NAT and stateful packet filtering.
 
-- **Linux system provisioning:** Ubuntu Server 24.04 on KVM/libvirt, with GPT/LVM storage, package maintenance, system identity and time configuration.
+The project focuses on five main areas:
 
-- **System administration:** users, groups, sudo privileges, filesystem permissions, SSH public-key authentication, system services and host firewall rules.
+- **Network segmentation and isolation:** separation of External, DMZ, Internal and Management networks using static routing and two Linux firewalls.
 
-- **Network segmentation and firewalling:** External, DMZ, Internal and Management networks, static routing, IPv4 forwarding, and two Alpine Linux firewalls with nftables, stateful filtering, default-deny policies, DNAT and SNAT.
+- **Controlled service exposure:** HTTPS is published through FW1 while protected networks remain isolated from direct External access.
 
-- **Web services and security:** NGINX deployment, controlled web-content permissions and HTTPS configuration.
+- **Stateful firewalling:** nftables is used for default-deny filtering, connection tracking, DNAT, SNAT and controlled communication between security zones.
 
-- **Validation, operations and reproducibility:** service and network-flow validation, TLS and firewall tests, logging, monitoring, recovery procedures, and Packer/shell automation for the Quick Start deployment.
+- **System and service security:** Ubuntu Server, NGINX, TLS, SSH public-key authentication, user and permission management, and service hardening.
 
-> **Note:** The core Linux, networking, firewall and HTTPS components have been implemented. Security validation, operational testing, monitoring and the automated Quick Start deployment are currently in progress.
+- **Validation and reproducibility:** network flows, firewall behaviour, HTTPS/TLS, failure localisation and deployment procedures are validated using repeatable tests and collected evidence.
+
+> **Current status:** The main Linux, networking, firewall and HTTPS infrastructure has been implemented. Validation, troubleshooting, monitoring and deployment automation are still being extended.
 
 ---
 
@@ -57,9 +59,16 @@ The objective is to provide the development team with a secure deployment target
 
 ## 1. Project Approach and Requirements
 
-The project uses security and operational requirements from recognised security guides and official product documentation. These requirements cover Linux system security, network segmentation, web and TLS security, monitoring, backups and recovery.
+The infrastructure was designed from functional, security and operational objectives.
 
-Each requirement is linked to a design decision, an implemented control and a validation test. Completed test results are stored as project evidence.
+The main design criteria are:
+
+- expose only the required public service;
+- isolate External, DMZ, Internal and Management networks;
+- restrict communication between zones;
+- preserve a dedicated management path;
+- maintain enough visibility for troubleshooting;
+- document and automate the deployment where possible.
 
 >The complete requirements and their links to the implemented controls and tests are available in the [Web Server Requirements](docs/web-server-requirements.md).
 
@@ -520,6 +529,252 @@ The screenshot shows that the network interfaces for external-client, FW1, web-s
 **05. Connectivity to the service**
 
 
+### 6.2 Linux Web Server - systems and services
+
+**Check health of system**
+
+In this test CPU, RAM, disk and load will be checked. Teh utilities used are:
+
+```bash
+uptime
+free h
+df
+vmstat
+top
+```
+
+**Check NGINX as service**
+
+Demostrar la cadena:
+
+configuration
+     ↓
+process
+     ↓
+listening socket
+     ↓
+HTTP response
+     ↓
+logs
+
+Herramientas:
+
+nginx -t, systemctl, ss, curl, journalctl
+
+**Persistence**
+
+Reiniciar el Web Server y comprobar que:
+
+red vuelve;
+SSH vuelve;
+NGINX vuelve;
+firewall local vuelve;
+web vuelve a responder.
+
+Esto tiene bastante valor de sysadmin.
+
+LPIC-2 200.1 cubre monitorización de recursos y LPIC-2 208.4 NGINX
+
+
+
+### 6.3 Network Security
+
+Aquí se valida la política, no el sistema operativo.
+
+Yo haría solo 3 pruebas fuertes.
+
+SEC-01 — External attack surface
+
+External Client:
+
+nmap
+
+Demostrar que desde Internet:
+
+HTTPS está disponible;
+SSH no;
+no aparece acceso administrativo innecesario.
+
+SEC-02 — Network segmentation
+
+Ejemplo:
+
+DMZ → Management = DROP
+
+Intento desde Web + counter de FW2.
+
+Esto demuestra que la segmentación existe de verdad.
+
+SEC-03 — Stateful policy
+
+Puede reutilizar FW-02. No hace falta duplicarla.
+
+Es decir, stateful pertenece técnicamente al firewall y también es evidencia de Network Security.
+
+
+### 6.4 FW1 / FW2 - routing, NAT y stateful
+
+FW-01 — DNAT/SNAT
+
+Demostrar realmente:
+
+External
+192.168.122.2:443
+       ↓
+      FW1
+       ↓ DNAT
+10.0.0.34:443
+
+y:
+
+Web private IP
+      ↓
+     FW1
+      ↓ SNAT
+192.168.122.2
+
+Herramientas:
+
+tcpdump + nft counters
+
+FW-02 — Stateful filtering
+
+Demostrar:
+
+NEW
+ ↓
+policy permits connection
+ ↓
+ESTABLISHED
+ ↓
+return traffic accepted
+
+y compararlo con una conexión nueva no autorizada.
+
+Esto conecta directamente con tu explicación de los Cisco ASA como firewalls stateful.
+
+LPIC-2 212.1 cubre routing, NAT y stateful firewalling
+
+
+### 6.5 Monitoring and Observability
+
+Después de demostrar que todo funciona debemos establecer un baseline operativo:
+
+CPU;
+RAM;
+disco;
+load;
+conexiones;
+NGINX;
+logs.
+
+Ejemplo conceptual:
+
+System resources
+      +
+Network connections
+      +
+Service state
+      +
+Application logs
+      =
+Known-good operational baseline
+
+Herramientas:
+
+uptime, free, df, vmstat/sar, ss, journalctl, NGINX logs.
+
+LPIC-2 200.1 está precisamente orientado a medir recursos y correlacionar síntomas con problemas
+
+
+### 6.6 Troubleshooting
+
+Debe reutilizar la misma metodología del punto 1:
+
+Symptom
+   ↓
+Scope
+   ↓
+Interface/IP
+   ↓
+Routing
+   ↓
+Firewall
+   ↓
+TCP socket
+   ↓
+Service
+   ↓
+Logs
+   ↓
+Root cause
+   ↓
+Correction
+   ↓
+Validation
+
+Haría después solo 2–3 incidentes muy buenos:
+
+problema de routing;
+firewall bloqueando un flujo;
+NGINX/service failure.
+
+**Dónde meter Wireshark**
+1. En FW1 / NAT + Stateful
+
+Aquí tiene más valor.
+
+Úsalo para analizar una captura .pcap tomada con tcpdump y demostrar:
+
+handshake TCP;
+cambio de IP/puerto por DNAT;
+flujo de ida y vuelta;
+estado de la conexión;
+diferencia entre tráfico permitido y bloqueado.
+
+Flujo:
+
+tcpdump → guardar .pcap → analizar con Wireshark
+
+LPIC-2 205.2 incluye tcpdump y wireshark para análisis de tráfico y troubleshooting de red.
+
+2. En Troubleshooting
+
+También puede aparecer como herramienta de análisis cuando:
+
+el routing parece correcto;
+el puerto está abierto;
+pero hay que ver qué pasa realmente con los paquetes.
+
+Por ejemplo:
+
+SYN sale
+→ ¿llega a FW1?
+→ ¿se traduce?
+→ ¿llega al Web?
+→ ¿vuelve SYN/ACK?
+
+
+
+
+
+
+
+
+
+
+
+This section contains only incidents that actually occurred during the implementation and validation of the server.
+
+| Incident         | Symptoms | Diagnosis | Root cause | Resolution | Evidence |
+| ---------------- | -------- | --------- | ---------- | ---------- | -------- |
+|  |          |           |            |            |          |
+
+
+>Detailed troubleshooting records:
+[troubleshooting.md](docs/troubleshooting.md)
+
+
 
 ---
 
@@ -557,9 +812,16 @@ ssh root@10.0.0.49
 ---
 
 
-### 8. Future work:
 
+## 8. Future Work
 
+Planned extensions include:
+
+- extending the Internal network with application and database services;
+- using the DMZ Web Server as an NGINX reverse proxy;
+- completing repeatable performance and fault-diagnosis tests;
+- evaluating the impact of additional network-security inspection mechanisms;
+- comparing security visibility, performance and resource consumption under different firewall configurations.
 
 ---
 
